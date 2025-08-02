@@ -90,7 +90,7 @@ char *weapi(char *input) {
   CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
 
-  // delete_file("temp");
+  delete_file("temp");
 
   return output;
 }
