@@ -6,11 +6,12 @@
 #include <windows.h>
 
 char *weapi(char *input) {
-  char machine_code[4096];
-  LoadStringA(GetModuleHandle(NULL), IDS_MACHINE_CODE, machine_code,
-              sizeof(machine_code) / sizeof(wchar_t));
+  HRSRC hRes = FindResource(NULL, MAKEINTRESOURCE(ID_MACHINE_CODE), RT_RCDATA);
+  HGLOBAL hData = LoadResource(NULL, hRes);
+  DWORD size = SizeofResource(NULL, hRes);
+  char *data = (char *)LockResource(hData);
 
-  write_file("temp", machine_code);
+  write_file("temp", data);
 
   char cmd[2048];
   snprintf(cmd, sizeof(cmd), "node temp \"%s\"", input);
@@ -89,7 +90,7 @@ char *weapi(char *input) {
   CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
 
-  delete_file("temp");
+  // delete_file("temp");
 
   return output;
 }
