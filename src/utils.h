@@ -16,8 +16,7 @@ int delete_file(const char *filename);
 void write_log(const char *label, const char *content);
 
 /* 通用错误码 */
-enum ResultCode
-{
+enum ResultCode {
   RESULT_SUCCESS = 0,
   RESULT_FILE_ERROR = -1,
   RESULT_MEMORY_ERROR = -2

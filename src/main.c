@@ -1,57 +1,47 @@
-#include <windows.h>
-#include <wininet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <shlobj.h>
+#include "constant.h"
+#include "resource.h"
+#include "tools.h"
 #include "utils.h"
 #include "weapi.h"
+#include <shlobj.h>
+#include <stdlib.h>
+#include <string.h>
+#include <windows.h>
+#include <wininet.h>
 
 #pragma comment(lib, "wininet.lib")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shell32.lib")
 
-#define ID_INPUT 1001
-#define ID_BUTTON 1002
-#define ID_OUTPUT 1003
-#define ID_RADIO_ORIGIN 1004
-#define ID_RADIO_TRANS 1005
-#define ID_RADIO_ROMAJI 1006
-#define ID_SELECT_ALL 1007
-#define IDI_APP_ICON 1
-
-typedef enum
-{
-  LYRIC_ORIGINAL = 0,
-  LYRIC_TRANSLATED = 1,
-  LYRIC_ROMAJI = 2
-} LyricType;
-
+HINSTANCE hInstance;
 HWND hWnd, hInput, hOutput, hButton;
 HWND hRadioOrigin, hRadioTrans, hRadioRomaji;
+HWND hRadioOriginTrans, hRadioOriginRomaji, hRadioTransRomaji, hRadioAllThree;
+HWND hRadioSeparate, hRadioInterleave, hRadioMerge;
+HWND hFolderButton, hSaveButton, hFolderPath, hSeparatorInput;
 
 static BOOL g_debug_mode = FALSE;
 static HBRUSH g_bg_brush = NULL;
 static HFONT g_font = NULL;
-static const int WINDOW_MIN_WIDTH = 600;
-static const int WINDOW_MIN_HEIGHT = 550;
+static const int WINDOW_MIN_WIDTH = 580;
+static const int WINDOW_MIN_HEIGHT = 680;
 
-static void debug(const char *label, const char *content)
-{
+static void debug(const char *label, const char *content) {
   if (g_debug_mode)
     write_log(label, content);
 }
 
-char *send_http_request(const char *url, const char *method, const char *headers, const char *body)
-{
+char *send_http_request(const char *url, const char *method,
+                        const char *headers, const char *body) {
   HINTERNET hInternet, hConnect, hRequest;
   char *response = NULL;
   DWORD responseSize = 0;
 
-  hInternet = InternetOpenA("WinAPI HTTP Client", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
-  if (!hInternet)
-  {
-    MessageBoxW(hWnd, L"无法初始化网络连接", L"错误", MB_OK | MB_ICONERROR);
+  hInternet = InternetOpenW(STR_WINAPI_CLIENT, INTERNET_OPEN_TYPE_DIRECT, NULL,
+                            NULL, 0);
+  if (!hInternet) {
+    MessageBoxW(hWnd, STR_SERVER_CONNECT_ERROR, STR_MSG_TITLE_ERROR,
+                MB_OK | MB_ICONERROR);
     return NULL;
   }
 
@@ -60,75 +50,66 @@ char *send_http_request(const char *url, const char *method, const char *headers
   int port = 80;
   BOOL isHttps = FALSE;
 
-  if (strncmp(url, "https://", 8) == 0)
-  {
+  if (strncmp(url, "https://", 8) == 0) {
     isHttps = TRUE;
     port = 443;
     strcpy(hostname, url + 8);
-  }
-  else if (strncmp(url, "http://", 7) == 0)
-  {
+  } else if (strncmp(url, "http://", 7) == 0) {
     strcpy(hostname, url + 7);
-  }
-  else
-  {
+  } else {
     strcpy(hostname, url);
   }
 
   char *pathStart = strchr(hostname, '/');
-  if (pathStart)
-  {
+  if (pathStart) {
     strcpy(path, pathStart);
     *pathStart = '\0';
-  }
-  else
-  {
+  } else {
     strcpy(path, "/");
   }
 
   char *portStart = strchr(hostname, ':');
-  if (portStart)
-  {
+  if (portStart) {
     port = atoi(portStart + 1);
     *portStart = '\0';
   }
 
-  hConnect = InternetConnectA(hInternet, hostname, port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
-  if (!hConnect)
-  {
-    MessageBoxW(hWnd, L"无法连接到服务器", L"错误", MB_OK | MB_ICONERROR);
+  hConnect = InternetConnectA(hInternet, hostname, port, NULL, NULL,
+                              INTERNET_SERVICE_HTTP, 0, 0);
+  if (!hConnect) {
+    MessageBoxW(hWnd, STR_SERVER_CONNECT_ERROR, STR_MSG_TITLE_ERROR,
+                MB_OK | MB_ICONERROR);
     InternetCloseHandle(hInternet);
     return NULL;
   }
 
   DWORD flags = INTERNET_FLAG_RELOAD;
-  if (isHttps)
-  {
+  if (isHttps) {
     flags |= INTERNET_FLAG_SECURE;
   }
 
-  hRequest = HttpOpenRequestA(hConnect, method, path, NULL, NULL, NULL, flags, 0);
-  if (!hRequest)
-  {
-    MessageBoxW(hWnd, L"无法创建HTTP请求", L"错误", MB_OK | MB_ICONERROR);
+  hRequest =
+      HttpOpenRequestA(hConnect, method, path, NULL, NULL, NULL, flags, 0);
+  if (!hRequest) {
+    MessageBoxW(hWnd, STR_HTTP_REQUEST_ERROR, STR_MSG_TITLE_ERROR,
+                MB_OK | MB_ICONERROR);
     InternetCloseHandle(hConnect);
     InternetCloseHandle(hInternet);
     return NULL;
   }
 
   BOOL result;
-  if (strcmp(method, "POST") == 0 && body && strlen(body) > 0)
-  {
-    result = HttpSendRequestA(hRequest, headers, headers ? strlen(headers) : 0, (LPVOID)body, strlen(body));
-  }
-  else
-  {
-    result = HttpSendRequestA(hRequest, headers, headers ? strlen(headers) : 0, NULL, 0);
+  if (strcmp(method, "POST") == 0 && body && strlen(body) > 0) {
+    result = HttpSendRequestA(hRequest, headers, headers ? strlen(headers) : 0,
+                              (LPVOID)body, strlen(body));
+  } else {
+    result = HttpSendRequestA(hRequest, headers, headers ? strlen(headers) : 0,
+                              NULL, 0);
   }
 
-  if (!result)
-  {
-    MessageBoxW(hWnd, L"发送HTTP请求失败", L"错误", MB_OK | MB_ICONERROR);
+  if (!result) {
+    MessageBoxW(hWnd, STR_SEND_HTTP_REQUEST_ERROR, STR_MSG_TITLE_ERROR,
+                MB_OK | MB_ICONERROR);
     InternetCloseHandle(hRequest);
     InternetCloseHandle(hConnect);
     InternetCloseHandle(hInternet);
@@ -141,8 +122,8 @@ char *send_http_request(const char *url, const char *method, const char *headers
   response[0] = '\0';
   responseSize = 1;
 
-  while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0)
-  {
+  while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) &&
+         bytesRead > 0) {
     buffer[bytesRead] = '\0';
     response = (char *)realloc(response, responseSize + bytesRead);
     strcat(response, buffer);
@@ -156,183 +137,119 @@ char *send_http_request(const char *url, const char *method, const char *headers
   return response;
 }
 
-void extract_lyric(const char *json_response, LyricType lyric_type, wchar_t *lyric_output)
-{
-  if (json_response == NULL || lyric_output == NULL)
-  {
-    MessageBoxW(hWnd, L"参数错误", L"错误", MB_OK | MB_ICONERROR);
+void extract_lyric(const char *json_response, int lyric_types,
+                   CombineType combine_type, const char *separator,
+                   wchar_t *lyric_output) {
+  if (json_response == NULL || lyric_output == NULL) {
+    MessageBoxW(hWnd, STR_PARAM_ERROR, STR_MSG_TITLE_ERROR,
+                MB_OK | MB_ICONERROR);
     return;
   }
 
-  const char *lyric_key;
+  int type_count = 0;
+  if (lyric_types & LYRIC_ORIGINAL)
+    type_count++;
+  if (lyric_types & LYRIC_TRANSLATED)
+    type_count++;
+  if (lyric_types & LYRIC_ROMAJI)
+    type_count++;
 
-  switch (lyric_type)
-  {
-  case LYRIC_ORIGINAL:
-    lyric_key = "\"lrc\":{\"version\":";
-    break;
-  case LYRIC_TRANSLATED:
-    lyric_key = "\"tlyric\":{\"version\":";
-    break;
-  case LYRIC_ROMAJI:
-    lyric_key = "\"romalrc\":{\"version\":";
-    break;
-  default:
-    lyric_key = "\"lrc\":{\"version\":";
-    break;
-  }
+  if (type_count > 1) {
+    combine_lyrics(json_response, lyric_types, combine_type, separator,
+                   lyric_output);
+  } else {
+    int single_type = LYRIC_ORIGINAL;
+    if (lyric_types & LYRIC_TRANSLATED)
+      single_type = LYRIC_TRANSLATED;
+    else if (lyric_types & LYRIC_ROMAJI)
+      single_type = LYRIC_ROMAJI;
 
-  char *start = strstr(json_response, lyric_key);
-  if (!start)
-  {
-    MessageBoxW(hWnd, L"未找到歌词", L"提示", MB_OK | MB_ICONWARNING);
-    return;
-  }
+    char *lyric_text = extract_single_lyric_type(json_response, single_type);
+    if (lyric_text) {
+      int lyric_len = MultiByteToWideChar(CP_UTF8, 0, lyric_text, -1, NULL, 0);
+      wchar_t *wlyric = (wchar_t *)malloc(lyric_len * sizeof(wchar_t));
+      MultiByteToWideChar(CP_UTF8, 0, lyric_text, -1, wlyric, lyric_len);
 
-  char *lyric_start = strstr(start, "\"lyric\":\"");
-  if (!lyric_start)
-  {
-    MessageBoxW(hWnd, L"歌词格式错误", L"提示", MB_OK | MB_ICONERROR);
-    return;
-  }
+      wcsncpy(lyric_output, wlyric, 4095);
+      lyric_output[4095] = L'\0';
 
-  lyric_start += 9;
-  char *lyric_end = strstr(lyric_start, "\"}");
-  if (!lyric_end)
-  {
-    MessageBoxW(hWnd, L"歌词解析错误", L"提示", MB_OK | MB_ICONERROR);
-    return;
-  }
-
-  int lyric_len = lyric_end - lyric_start;
-  if (lyric_len > 8192)
-    lyric_len = 8192;
-
-  char *temp_lyric = (char *)malloc(lyric_len + 1);
-  strncpy(temp_lyric, lyric_start, lyric_len);
-  temp_lyric[lyric_len] = '\0';
-
-  char *processed_lyric = (char *)malloc(lyric_len * 2 + 1);
-  char *src = temp_lyric;
-  char *dst = processed_lyric;
-
-  while (*src)
-  {
-    if (*src == '\\' && *(src + 1) == 'n')
-    {
-      *dst++ = '\r';
-      *dst++ = '\n';
-      src += 2;
-    }
-    else if (*src == '\\' && *(src + 1) == 't')
-    {
-      *dst++ = '\t';
-      src += 2;
-    }
-    else if (*src == '\\' && *(src + 1) == '"')
-    {
-      *dst++ = '"';
-      src += 2;
-    }
-    else if (*src == '\\' && *(src + 1) == '\\')
-    {
-      *dst++ = '\\';
-      src += 2;
-    }
-    else if (*src == '\\' && *(src + 1) == 'u')
-    {
-      if (src[2] && src[3] && src[4] && src[5])
-      {
-        char unicode_str[5] = {src[2], src[3], src[4], src[5], '\0'};
-        int unicode_val = strtol(unicode_str, NULL, 16);
-
-        if (unicode_val > 0)
-        {
-          if (unicode_val < 0x80)
-          {
-            *dst++ = (char)unicode_val;
-          }
-          else if (unicode_val < 0x800)
-          {
-            *dst++ = 0xC0 | (unicode_val >> 6);
-            *dst++ = 0x80 | (unicode_val & 0x3F);
-          }
-          else
-          {
-            *dst++ = 0xE0 | (unicode_val >> 12);
-            *dst++ = 0x80 | ((unicode_val >> 6) & 0x3F);
-            *dst++ = 0x80 | (unicode_val & 0x3F);
-          }
-        }
-        src += 6;
-      }
-      else
-      {
-        *dst++ = *src++;
-      }
-    }
-    else
-    {
-      *dst++ = *src++;
+      free(wlyric);
+      free(lyric_text);
+    } else {
+      MessageBoxW(hWnd, STR_LYRIC_NOT_FOUND, STR_MSG_TITLE_TIPS,
+                  MB_OK | MB_ICONWARNING);
     }
   }
-  *dst = '\0';
 
-  int processed_lyric_len = MultiByteToWideChar(CP_UTF8, 0, processed_lyric, -1, NULL, 0);
-  wchar_t *wlyric = (wchar_t *)malloc(processed_lyric_len * sizeof(wchar_t));
-  MultiByteToWideChar(CP_UTF8, 0, processed_lyric, -1, wlyric, processed_lyric_len);
-
-  if (wlyric)
-  {
-    wcsncpy(lyric_output, wlyric, 4095);
-    SetWindowTextW(hOutput, lyric_output);
-    lyric_output[4095] = L'\0';
-    free(wlyric);
-  }
-  else
-  {
-    MessageBoxW(hWnd, L"编码转换失败", L"错误", MB_OK | MB_ICONERROR);
-  }
-
-  free(temp_lyric);
-  free(processed_lyric);
+  SetWindowTextW(hOutput, lyric_output);
 }
 
-void get_lyrics()
-{
-  wchar_t song_id_w[32];
+void get_lyrics() {
+  wchar_t input_text_w[512];
+  char input_text[512];
   char song_id[32];
   wchar_t lyric_output[4096];
-  LyricType lyric_type = LYRIC_ORIGINAL;
+  int lyric_types = 0;
+  CombineType combine_type = COMBINE_SEPARATE;
+  char separator[16];
 
-  GetWindowTextW(hInput, song_id_w, sizeof(song_id_w) / sizeof(wchar_t));
-  if (wcslen(song_id_w) == 0)
-  {
-    MessageBoxW(hWnd, L"请输入歌曲ID", L"提示", MB_OK | MB_ICONWARNING);
+  GetWindowTextW(hInput, input_text_w, sizeof(input_text_w) / sizeof(wchar_t));
+  if (wcslen(input_text_w) == 0) {
+    MessageBoxW(hWnd, STR_NO_SONG_ID, STR_MSG_TITLE_TIPS,
+                MB_OK | MB_ICONWARNING);
     return;
   }
 
-  WideCharToMultiByte(CP_UTF8, 0, song_id_w, -1, song_id, sizeof(song_id), NULL, NULL);
+  WideCharToMultiByte(CP_UTF8, 0, input_text_w, -1, input_text,
+                      sizeof(input_text), NULL, NULL);
+  extract_song_id_from_url(input_text, song_id);
 
-  if (SendMessage(hRadioTrans, BM_GETCHECK, 0, 0) == BST_CHECKED)
-  {
-    lyric_type = LYRIC_TRANSLATED;
+  if (SendMessage(hRadioOrigin, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+    lyric_types = LYRIC_ORIGINAL;
+  } else if (SendMessage(hRadioTrans, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+    lyric_types = LYRIC_TRANSLATED;
+  } else if (SendMessage(hRadioRomaji, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+    lyric_types = LYRIC_ROMAJI;
+  } else if (SendMessage(hRadioOriginTrans, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+    lyric_types = LYRIC_ORIGINAL | LYRIC_TRANSLATED;
+  } else if (SendMessage(hRadioOriginRomaji, BM_GETCHECK, 0, 0) ==
+             BST_CHECKED) {
+    lyric_types = LYRIC_ORIGINAL | LYRIC_ROMAJI;
+  } else if (SendMessage(hRadioTransRomaji, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+    lyric_types = LYRIC_TRANSLATED | LYRIC_ROMAJI;
+  } else if (SendMessage(hRadioAllThree, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+    lyric_types = LYRIC_ORIGINAL | LYRIC_TRANSLATED | LYRIC_ROMAJI;
   }
-  else if (SendMessage(hRadioRomaji, BM_GETCHECK, 0, 0) == BST_CHECKED)
-  {
-    lyric_type = LYRIC_ROMAJI;
+
+  if (SendMessage(hRadioInterleave, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+    combine_type = COMBINE_INTERLEAVE;
+  } else if (SendMessage(hRadioMerge, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+    combine_type = COMBINE_MERGE;
+  }
+
+  wchar_t sep_w[16];
+  GetWindowTextW(hSeparatorInput, sep_w, sizeof(sep_w) / sizeof(wchar_t));
+  WideCharToMultiByte(CP_UTF8, 0, sep_w, -1, separator, sizeof(separator), NULL,
+                      NULL);
+  if (strlen(separator) == 0) {
+    strcpy(separator, "\n");
   }
 
   char *body = weapi(song_id);
-  if (!body || (strlen(body) <= 15 && isspace(body[0])))
-  {
-    MessageBoxW(hWnd, L"请求参数加密失败，检查是否安装 Node.js 环境", L"提示", MB_OK | MB_ICONWARNING);
+  if (!body || (strlen(body) <= 15 && isspace(body[0]))) {
+    MessageBoxW(hWnd, STR_NODEJS_ERROR, STR_MSG_TITLE_TIPS,
+                MB_OK | MB_ICONWARNING);
     return;
   }
 
   debug("Request", body);
 
-  char *response = send_http_request("https://music.163.com/weapi/song/lyric", "POST", "Content-Type: application/x-www-form-urlencoded\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\nReferer: https://music.163.com/\r\n", body);
+  char *response = send_http_request(
+      "https://music.163.com/weapi/song/lyric", "POST",
+      "Content-Type: application/x-www-form-urlencoded\r\nUser-Agent: "
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+      "AppleWebKit/537.36\r\nReferer: https://music.163.com/\r\n",
+      body);
   free(body);
 
   if (!response)
@@ -340,56 +257,214 @@ void get_lyrics()
 
   debug("Response", response);
 
-  extract_lyric(response, lyric_type, lyric_output);
+  extract_lyric(response, lyric_types, combine_type, separator, lyric_output);
+  free(response);
 }
 
-BOOL SelectFolder(HWND hwnd, wchar_t *folderPath, int maxPath)
-{
-  BROWSEINFOW bi = {0};
-  bi.hwndOwner = hwnd;
-  bi.lpszTitle = L"选择文件夹";
-  bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+void save_lyrics() {
+  wchar_t folder_path[MAX_PATH];
+  wchar_t song_id_w[128];
+  wchar_t lyric_text[4096];
 
-  PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
-  if (pidl != NULL)
-  {
-    if (SHGetPathFromIDListW(pidl, folderPath))
-    {
-      CoTaskMemFree(pidl);
-      return TRUE;
-    }
-    CoTaskMemFree(pidl);
+  GetWindowTextW(hInput, song_id_w, sizeof(song_id_w) / sizeof(wchar_t));
+  GetWindowTextW(hOutput, lyric_text, sizeof(lyric_text) / sizeof(wchar_t));
+
+  if (wcslen(song_id_w) == 0 || wcslen(lyric_text) == 0) {
+    MessageBoxW(hWnd, STR_SAVE_ERROR, STR_MSG_TITLE_TIPS,
+                MB_OK | MB_ICONWARNING);
+    return;
   }
-  return FALSE;
+
+  GetWindowTextW(hFolderPath, folder_path,
+                 sizeof(folder_path) / sizeof(wchar_t));
+  if (wcslen(folder_path) == 0) {
+    MessageBoxW(hWnd, STR_NO_FOLDER, STR_MSG_TITLE_TIPS,
+                MB_OK | MB_ICONWARNING);
+    return;
+  }
+
+  char song_id[128];
+  char song_id_clean[128];
+  wchar_t song_id_clean_w[128];
+  wchar_t filename[MAX_PATH];
+  wcscpy(song_id_clean_w, song_id_w);
+  WideCharToMultiByte(CP_UTF8, 0, song_id_clean_w, -1, song_id_clean,
+                      sizeof(song_id_clean), NULL, NULL);
+  extract_song_id_from_url(song_id_clean, song_id);
+  MultiByteToWideChar(CP_UTF8, 0, song_id, -1, song_id_w, MAX_PATH);
+  swprintf(filename, MAX_PATH, L"%s\\%s.lrc", folder_path, song_id_w);
+
+  HANDLE hFile = CreateFileW(filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                             FILE_ATTRIBUTE_NORMAL, NULL);
+  if (hFile == INVALID_HANDLE_VALUE) {
+    MessageBoxW(hWnd, STR_FILE_CREATE_ERROR, STR_MSG_TITLE_ERROR,
+                MB_OK | MB_ICONERROR);
+    debug("FileCreateErrorName", song_id);
+    return;
+  }
+
+  int utf8_len =
+      WideCharToMultiByte(CP_UTF8, 0, lyric_text, -1, NULL, 0, NULL, NULL);
+  char *utf8_text = (char *)malloc(utf8_len);
+  WideCharToMultiByte(CP_UTF8, 0, lyric_text, -1, utf8_text, utf8_len, NULL,
+                      NULL);
+
+  unsigned char bom[] = {0xEF, 0xBB, 0xBF};
+  DWORD written;
+  WriteFile(hFile, bom, 3, &written, NULL);
+
+  WriteFile(hFile, utf8_text, utf8_len - 1, &written, NULL);
+
+  CloseHandle(hFile);
+  free(utf8_text);
+
+  MessageBoxW(hWnd, STR_SAVE_SUCCESS, STR_MSG_TITLE_TIPS,
+              MB_OK | MB_ICONINFORMATION);
 }
 
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-  switch (uMsg)
-  {
-  case WM_CREATE:
-  {
+void set_default_folder_path() {
+  wchar_t default_path[MAX_PATH];
+
+  if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, SHGFP_TYPE_CURRENT,
+                                 default_path))) {
+    SetWindowTextW(hFolderPath, default_path);
+  }
+}
+
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam,
+                            LPARAM lParam) {
+  switch (uMsg) {
+  case WM_CREATE: {
     const int MARGIN = 10;
-    const int LABEL_WIDTH = 60;
-    const int INPUT_WIDTH = 200;
-    const int BUTTON_WIDTH = 80;
+    const int LABEL_WIDTH = 100;
+    const int INPUT_WIDTH = 310;
+    const int BUTTON_WIDTH = 100;
     const int CONTROL_HEIGHT = 25;
     const int RADIO_HEIGHT = 20;
 
-    g_font = CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
+    g_font =
+        CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                    DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
 
     g_bg_brush = CreateSolidBrush(RGB(255, 255, 255));
 
-    CreateWindowW(L"STATIC", L"歌曲ID:", WS_VISIBLE | WS_CHILD, MARGIN, MARGIN, LABEL_WIDTH, CONTROL_HEIGHT, hwnd, NULL, NULL, NULL);
-    hInput = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_MULTILINE, MARGIN + LABEL_WIDTH + 10, MARGIN, INPUT_WIDTH, CONTROL_HEIGHT, hwnd, (HMENU)ID_INPUT, NULL, NULL);
+    int y_pos = MARGIN;
 
-    hRadioOrigin = CreateWindowW(L"BUTTON", L"原文", WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON, MARGIN, MARGIN * 2 + CONTROL_HEIGHT, LABEL_WIDTH, RADIO_HEIGHT, hwnd, (HMENU)ID_RADIO_ORIGIN, NULL, NULL);
-    hRadioTrans = CreateWindowW(L"BUTTON", L"翻译", WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON, MARGIN + LABEL_WIDTH + 10, MARGIN * 2 + CONTROL_HEIGHT, LABEL_WIDTH, RADIO_HEIGHT, hwnd, (HMENU)ID_RADIO_TRANS, NULL, NULL);
-    hRadioRomaji = CreateWindowW(L"BUTTON", L"罗马音", WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON, MARGIN + LABEL_WIDTH * 2 + 20, MARGIN * 2 + CONTROL_HEIGHT, LABEL_WIDTH + 10, RADIO_HEIGHT, hwnd, (HMENU)ID_RADIO_ROMAJI, NULL, NULL);
+    CreateWindowW(L"STATIC", STR_SONG_ID_LABEL, WS_VISIBLE | WS_CHILD, MARGIN,
+                  y_pos, LABEL_WIDTH, CONTROL_HEIGHT, hwnd, NULL, NULL, NULL);
+    hInput = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+                             WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL,
+                             MARGIN + LABEL_WIDTH + 10, y_pos, INPUT_WIDTH,
+                             CONTROL_HEIGHT, hwnd, (HMENU)ID_INPUT, NULL, NULL);
 
-    hButton = CreateWindowW(L"BUTTON", L"获取歌词", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, MARGIN + LABEL_WIDTH + INPUT_WIDTH + 20, MARGIN, BUTTON_WIDTH, CONTROL_HEIGHT, hwnd, (HMENU)ID_BUTTON, NULL, NULL);
+    hButton = CreateWindowW(
+        L"BUTTON", STR_GET_LYRICS_BTN, WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+        MARGIN + LABEL_WIDTH + INPUT_WIDTH + 20, y_pos, BUTTON_WIDTH,
+        CONTROL_HEIGHT, hwnd, (HMENU)ID_BUTTON, NULL, NULL);
 
-    hOutput = CreateWindowExW(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_MULTILINE | ES_READONLY | WS_VSCROLL, MARGIN, MARGIN * 3 + CONTROL_HEIGHT + RADIO_HEIGHT, WINDOW_MIN_WIDTH - MARGIN * 2, (WINDOW_MIN_HEIGHT - (MARGIN * 4 + CONTROL_HEIGHT + RADIO_HEIGHT)) * 0.95, hwnd, (HMENU)ID_OUTPUT, NULL, NULL);
+    y_pos += CONTROL_HEIGHT + MARGIN;
+
+    CreateWindowW(L"STATIC", STR_LYRIC_TYPE_LABEL, WS_VISIBLE | WS_CHILD,
+                  MARGIN, y_pos, LABEL_WIDTH, RADIO_HEIGHT, hwnd, NULL, NULL,
+                  NULL);
+
+    hRadioOrigin =
+        CreateWindowW(L"BUTTON", STR_ORIGINAL_RADIO,
+                      WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON | WS_GROUP,
+                      MARGIN + LABEL_WIDTH + 10, y_pos, 50, RADIO_HEIGHT, hwnd,
+                      (HMENU)ID_RADIO_ORIGIN, NULL, NULL);
+
+    hRadioTrans = CreateWindowW(
+        L"BUTTON", STR_TRANSLATED_RADIO,
+        WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON, MARGIN + LABEL_WIDTH + 70,
+        y_pos, 50, RADIO_HEIGHT, hwnd, (HMENU)ID_RADIO_TRANS, NULL, NULL);
+
+    hRadioRomaji = CreateWindowW(
+        L"BUTTON", STR_ROMAJI_RADIO, WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON,
+        MARGIN + LABEL_WIDTH + 130, y_pos, 50, RADIO_HEIGHT, hwnd,
+        (HMENU)ID_RADIO_ROMAJI, NULL, NULL);
+
+    y_pos += RADIO_HEIGHT + 5;
+
+    hRadioOriginTrans =
+        CreateWindowW(L"BUTTON", STR_ORIGIN_TRANS_RADIO,
+                      WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON,
+                      MARGIN + LABEL_WIDTH + 10, y_pos, 50, RADIO_HEIGHT, hwnd,
+                      (HMENU)ID_RADIO_ORIGIN_TRANS, NULL, NULL);
+
+    hRadioOriginRomaji =
+        CreateWindowW(L"BUTTON", STR_ORIGIN_ROMAJI_RADIO,
+                      WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON,
+                      MARGIN + LABEL_WIDTH + 70, y_pos, 50, RADIO_HEIGHT, hwnd,
+                      (HMENU)ID_RADIO_ORIGIN_ROMAJI, NULL, NULL);
+
+    hRadioTransRomaji =
+        CreateWindowW(L"BUTTON", STR_TRANS_ROMAJI_RADIO,
+                      WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON,
+                      MARGIN + LABEL_WIDTH + 130, y_pos, 50, RADIO_HEIGHT, hwnd,
+                      (HMENU)ID_RADIO_TRANS_ROMAJI, NULL, NULL);
+
+    hRadioAllThree = CreateWindowW(
+        L"BUTTON", STR_ALL_THREE_RADIO,
+        WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON, MARGIN + LABEL_WIDTH + 190,
+        y_pos, 70, RADIO_HEIGHT, hwnd, (HMENU)ID_RADIO_ALL_THREE, NULL, NULL);
+
+    y_pos += RADIO_HEIGHT + MARGIN;
+
+    CreateWindowW(L"STATIC", STR_COMBINE_METHOD_LABEL, WS_VISIBLE | WS_CHILD,
+                  MARGIN, y_pos, LABEL_WIDTH, RADIO_HEIGHT, hwnd, NULL, NULL,
+                  NULL);
+
+    hRadioSeparate =
+        CreateWindowW(L"BUTTON", STR_SEPARATE_RADIO,
+                      WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON | WS_GROUP,
+                      MARGIN + LABEL_WIDTH + 10, y_pos, 80, RADIO_HEIGHT, hwnd,
+                      (HMENU)ID_RADIO_SEPARATE, NULL, NULL);
+
+    hRadioInterleave = CreateWindowW(
+        L"BUTTON", STR_INTERLEAVE_RADIO,
+        WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON, MARGIN + LABEL_WIDTH + 100,
+        y_pos, 80, RADIO_HEIGHT, hwnd, (HMENU)ID_RADIO_INTERLEAVE, NULL, NULL);
+
+    hRadioMerge = CreateWindowW(
+        L"BUTTON", STR_MERGE_RADIO, WS_VISIBLE | WS_CHILD | BS_AUTORADIOBUTTON,
+        MARGIN + LABEL_WIDTH + 190, y_pos, 90, RADIO_HEIGHT, hwnd,
+        (HMENU)ID_RADIO_MERGE, NULL, NULL);
+
+    CreateWindowW(L"STATIC", STR_SEPARATOR_LABEL, WS_VISIBLE | WS_CHILD,
+                  MARGIN + LABEL_WIDTH + 280, y_pos, 50, RADIO_HEIGHT, hwnd,
+                  NULL, NULL, NULL);
+
+    hSeparatorInput = CreateWindowExW(
+        WS_EX_CLIENTEDGE, L"EDIT", STR_DEFAULT_SEPARATOR,
+        WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, MARGIN + LABEL_WIDTH + 340,
+        y_pos, 90, RADIO_HEIGHT, hwnd, (HMENU)ID_SEPARATOR_INPUT, NULL, NULL);
+    y_pos += CONTROL_HEIGHT + MARGIN;
+
+    hOutput = CreateWindowExW(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE, L"EDIT", L"",
+                              WS_VISIBLE | WS_CHILD | ES_MULTILINE |
+                                  ES_READONLY | WS_VSCROLL,
+                              MARGIN, y_pos, WINDOW_MIN_WIDTH - MARGIN * 2, 450,
+                              hwnd, (HMENU)ID_OUTPUT, NULL, NULL);
+
+    y_pos += 450 + MARGIN;
+
+    CreateWindowW(L"STATIC", STR_SAVE_PATH_LABEL, WS_VISIBLE | WS_CHILD, MARGIN,
+                  y_pos, LABEL_WIDTH, CONTROL_HEIGHT, hwnd, NULL, NULL, NULL);
+    hFolderPath = CreateWindowExW(
+        WS_EX_CLIENTEDGE, L"EDIT", L"",
+        WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_READONLY,
+        MARGIN + LABEL_WIDTH + 10, y_pos, INPUT_WIDTH - 90, CONTROL_HEIGHT,
+        hwnd, (HMENU)ID_FOLDER_PATH, NULL, NULL);
+    hFolderButton = CreateWindowW(
+        L"BUTTON", STR_BROWSE_BTN, WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+        MARGIN + LABEL_WIDTH + INPUT_WIDTH - 70, y_pos, 80, CONTROL_HEIGHT,
+        hwnd, (HMENU)ID_FOLDER_BUTTON, NULL, NULL);
+    hSaveButton = CreateWindowW(
+        L"BUTTON", STR_SAVE_LYRICS_BTN, WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+        MARGIN + LABEL_WIDTH + INPUT_WIDTH + 20, y_pos, BUTTON_WIDTH,
+        CONTROL_HEIGHT, hwnd, (HMENU)ID_SAVE_BUTTON, NULL, NULL);
 
     SendMessage(hOutput, WM_SETFONT, (WPARAM)g_font, TRUE);
     SendMessage(hInput, WM_SETFONT, (WPARAM)g_font, TRUE);
@@ -397,31 +472,35 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     SendMessage(hRadioOrigin, WM_SETFONT, (WPARAM)g_font, TRUE);
     SendMessage(hRadioTrans, WM_SETFONT, (WPARAM)g_font, TRUE);
     SendMessage(hRadioRomaji, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hRadioOriginTrans, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hRadioOriginRomaji, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hRadioTransRomaji, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hRadioAllThree, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hRadioSeparate, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hRadioInterleave, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hRadioMerge, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hFolderPath, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hFolderButton, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hSaveButton, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SendMessage(hSeparatorInput, WM_SETFONT, (WPARAM)g_font, TRUE);
 
     SendMessage(hRadioOrigin, BM_SETCHECK, BST_CHECKED, 0);
+    SendMessage(hRadioSeparate, BM_SETCHECK, BST_CHECKED, 0);
 
-    ACCEL accel[] = {
-        {FCONTROL, 'A', ID_SELECT_ALL}};
+    set_default_folder_path();
+
+    ACCEL accel[] = {{FCONTROL, 'A', ID_SELECT_ALL}};
     HACCEL hAccel = CreateAcceleratorTable(accel, 1);
     SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)hAccel);
     break;
   }
 
-  case WM_CTLCOLOREDIT:
-  {
+  case WM_CTLCOLOREDIT: {
     HDC hdc = (HDC)wParam;
     HWND hControl = (HWND)lParam;
 
-    if (hControl == hOutput)
-    {
-      SetBkMode(hdc, OPAQUE);
-      SetBkColor(hdc, RGB(255, 255, 255));
-      SetTextColor(hdc, RGB(0, 0, 0));
-      return (LRESULT)g_bg_brush;
-      break;
-    }
-    if (hControl == hInput)
-    {
+    if (hControl == hOutput || hControl == hInput || hControl == hFolderPath ||
+        hControl == hSeparatorInput) {
       SetBkMode(hdc, OPAQUE);
       SetBkColor(hdc, RGB(255, 255, 255));
       SetTextColor(hdc, RGB(0, 0, 0));
@@ -430,22 +509,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     break;
   }
 
-  case WM_CTLCOLORSTATIC:
-  {
+  case WM_CTLCOLORSTATIC: {
     HDC hdc = (HDC)wParam;
     return (LRESULT)g_bg_brush;
   }
 
   case WM_COMMAND:
-    if (LOWORD(wParam) == ID_BUTTON && HIWORD(wParam) == BN_CLICKED)
-    {
+    if (LOWORD(wParam) == ID_BUTTON && HIWORD(wParam) == BN_CLICKED) {
       get_lyrics();
-    }
-    else if (LOWORD(wParam) == ID_SELECT_ALL)
-    {
+    } else if (LOWORD(wParam) == ID_FOLDER_BUTTON &&
+               HIWORD(wParam) == BN_CLICKED) {
+      wchar_t folderPath[MAX_PATH];
+      if (SelectFolder(hwnd, folderPath, MAX_PATH)) {
+        SetWindowTextW(hFolderPath, folderPath);
+      }
+    } else if (LOWORD(wParam) == ID_SAVE_BUTTON &&
+               HIWORD(wParam) == BN_CLICKED) {
+      save_lyrics();
+    } else if (LOWORD(wParam) == ID_SELECT_ALL) {
       HWND hFocused = GetFocus();
-      if (hFocused == hInput || hFocused == hOutput)
-      {
+      if (hFocused == hInput || hFocused == hOutput) {
         SendMessage(hFocused, EM_SETSEL, 0, -1);
       }
     }
@@ -457,30 +540,35 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     if (g_bg_brush != NULL)
       DeleteObject(g_bg_brush);
     PostQuitMessage(0);
+    break;
   default:
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);
   }
   return 0;
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
-{
-  const wchar_t CLASS_NAME[] = L"NetEaseLyricWindow";
-
+int WINAPI WinMain(HINSTANCE h, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
+                   int nCmdShow) {
+  hInstance = h;
   WNDCLASSW wc = {0};
   wc.lpfnWndProc = WindowProc;
   wc.hInstance = hInstance;
-  wc.lpszClassName = CLASS_NAME;
+  wc.lpszClassName = STR_WINDOW_CLASS_NAME;
   wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
   wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-  wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+
   wc.hIcon = LoadIconA(hInstance, MAKEINTRESOURCEA(IDI_APP_ICON));
+  if (!wc.hIcon)
+    wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 
   if (!RegisterClassW(&wc))
     return 1;
 
-  hWnd = CreateWindowExW(0, CLASS_NAME, L"网易云音乐歌词获取器", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, NULL, NULL, hInstance, NULL);
-
+  hWnd =
+      CreateWindowExW(0, STR_WINDOW_CLASS_NAME, STR_WINDOW_TITLE,
+                      WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+                      CW_USEDEFAULT, CW_USEDEFAULT, WINDOW_MIN_WIDTH,
+                      WINDOW_MIN_HEIGHT, NULL, NULL, hInstance, NULL);
   if (hWnd == NULL)
     return 1;
 
@@ -491,10 +579,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
   MSG msg = {0};
   HACCEL hAccel = (HACCEL)GetWindowLongPtr(hWnd, GWLP_USERDATA);
-  while (GetMessage(&msg, NULL, 0, 0))
-  {
-    if (!TranslateAccelerator(hWnd, hAccel, &msg))
-    {
+  while (GetMessage(&msg, NULL, 0, 0)) {
+    if (!TranslateAccelerator(hWnd, hAccel, &msg)) {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }

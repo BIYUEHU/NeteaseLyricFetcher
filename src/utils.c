@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-char *read_file(const char *filename)
-{
+char *read_file(const char *filename) {
   FILE *f = fopen(filename, "rb");
   if (f == NULL)
     return NULL;
@@ -13,8 +12,7 @@ char *read_file(const char *filename)
   rewind(f);
 
   char *buffer = malloc(size + 1);
-  if (buffer == NULL)
-  {
+  if (buffer == NULL) {
     fclose(f);
     return NULL;
   }
@@ -26,26 +24,19 @@ char *read_file(const char *filename)
   return buffer;
 }
 
-void write_file(const char *filename, const char *content)
-{
+void write_file(const char *filename, const char *content) {
   FILE *f = fopen(filename, "wb");
-  if (f)
-  {
+  if (f) {
     fwrite(content, 1, strlen(content), f);
     fclose(f);
   }
 }
 
-int delete_file(const char *filename)
-{
-  return remove(filename) == 0;
-}
+int delete_file(const char *filename) { return remove(filename) == 0; }
 
-void write_log(const char *label, const char *content)
-{
+void write_log(const char *label, const char *content) {
   FILE *f = fopen("debug.log", "a");
-  if (!f)
-  {
+  if (f) {
     fprintf(f, "[%s]\n%s\n\n", label, content);
     fclose(f);
   }
